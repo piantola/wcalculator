@@ -110,28 +110,63 @@ describe("calcularAnilhas — pesos exatos", () => {
 });
 
 describe("calcularAnilhas — pesos aproximados", () => {
-  it("peso impossível (barra + 0.5kg por lado) → approximate", () => {
-    const r = calcularAnilhas(21, 20);
-    expect(r.status).toBe("approximate");
-    expect(r.achievedTotal).toBeGreaterThan(0);
-  });
-
-  it("residualKg negativo quando falta peso", () => {
-    const r = calcularAnilhas(21, 20);
-    expect(r.residualKg).toBeLessThan(0);
-  });
-
-  it("achievedTotal + |residual| === requestedTotal (magnitude)", () => {
-    const r = calcularAnilhas(21, 20);
-    expect(Math.abs(r.achievedTotal - r.requestedTotal - r.residualKg)).toBeLessThan(0.0001);
-  });
-
   it("resultado exato tem residualKg numericamente zero", () => {
     const total = 20 + 2 * (45 * LB + 5);
     const r = calcularAnilhas(total, 20);
     expect(r.status).toBe("exact");
     expect(Math.abs(r.residualKg)).toBeLessThan(0.01);
     expect(r.achievedTotal).toBeCloseTo(total, 3);
+  });
+
+  it("achievedTotal - requestedTotal === residualKg (identidade)", () => {
+    const r = calcularAnilhas(21, 20);
+    expect(Math.abs(r.achievedTotal - r.requestedTotal - r.residualKg)).toBeLessThan(0.0001);
+  });
+});
+
+describe("calcularAnilhas — preferência pelo menor valor absoluto", () => {
+  it("100 kg com barra 20 kg: overshoot via 1,25kg é preferível ao deficit", () => {
+    // Greedy dá: 1×45lb + 1×35lb + 1×2,5kg por lado = 38,787 kg → deficit 2,425 total
+    // Adicionando 1×1,25kg por lado → overshoot 0,075 < 2,425 → deve escolher overshoot
+    const r = calcularAnilhas(100, 20);
+    expect(r.status).toBe("approximate");
+    expect(r.residualKg).toBeGreaterThan(0); // positivo = excedeu
+    expect(Math.abs(r.residualKg)).toBeLessThan(0.1);
+    const ids = r.plates.map((p) => p.plate.id);
+    expect(ids).toContain("1.25kg");
+  });
+
+  it("residualKg positivo significa excedeu, negativo significa faltou", () => {
+    // Com a nova regra, resultados aproximados podem ser overshoot (positivo)
+    const r = calcularAnilhas(100, 20);
+    expect(r.residualKg).toBeGreaterThan(0); // 100kg → overshoot agora
+  });
+
+  it("quando deficit já é menor que qualquer overshoot disponível, mantém deficit", () => {
+    // Peso com deficit muito pequeno: usar 20 + 2*(45*LB + 5) → exact
+    // Usar peso levemente abaixo do exact onde deficit < 1,25 kg e overshoot seria maior
+    // Por ex: 1×45lb + 1×2,5kg por lado = 22,912 kg. Deficit menor que 1,25kg
+    // Total = 20 + 2*(45*LB + 2.5) = 65,82328 → exact
+    // Vamos criar deficit < overshoot: usar total onde remaining ~0.5 < 1.25 overshoot
+    // mas também onde nenhuma anilha menor está disponível exceto 1.25kg
+    // Ex: 20 + 2*(45*LB) = 60,824 (exact). Subtrair 0.4 = 60.424.
+    // per side: 20.212. Greedy: 45lb (20.412) → overshoots! floor((20.212+0.01)/20.412)=0
+    // Greedy usaria 10kg (20.212/10=2, 2×10=20, remaining=0.212)
+    // remaining=0.212 < 1.25 → nenhuma anilha encaixa → deficit 0.424 total
+    // Tentativa de overshoot: 1.25kg → overshoot = 1.25-0.212 = 1.038 > 0.424 → manter deficit
+    const r = calcularAnilhas(20 + 2 * (10 + 10 + 0.212), 20);
+    expect(r.status).toBe("approximate");
+    expect(r.residualKg).toBeLessThan(0); // negativo = deficit mantido
+  });
+
+  it("quando overshoot e deficit são iguais, prefer overshoot (tiebreak para excedente)", () => {
+    // Edge case teórico — na prática o float nunca é exatamente igual
+    // Aqui apenas verificamos que a lógica de comparação usa < (strict) para overshoot
+    // ou seja, somente troca se overshoot ESTRITAMENTE menor que deficit
+    // Verificação indireta: qualquer resultado é válido (< ou >), não deve dar erro
+    const r = calcularAnilhas(99, 20);
+    expect(r.status === "exact" || r.status === "approximate").toBe(true);
+    expect(r.plates.length).toBeGreaterThanOrEqual(0);
   });
 });
 

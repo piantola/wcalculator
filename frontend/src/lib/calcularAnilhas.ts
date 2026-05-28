@@ -1,5 +1,5 @@
 import { PLATE_CATALOG } from "./plates";
-import type { CalcResult, PlateSlot } from "./types";
+import type { CalcResult, PlateDefinition, PlateSlot } from "./types";
 
 const TOLERANCE = 0.01;
 
@@ -34,15 +34,67 @@ export function calcularAnilhas(
     }
   }
 
+  // Se sobrou deficit, tentar adicionar a menor anilha disponível para ver
+  // se o overshoot resultante tem menor valor absoluto que o deficit atual.
+  if (remaining > TOLERANCE) {
+    const usedPairs = new Map(plates.map((s) => [s.plate.id, s.count]));
+    const smallestAvailable = findSmallestAvailable(usedPairs);
+
+    if (smallestAvailable) {
+      const overshoot = smallestAvailable.weightKg - remaining;
+      if (overshoot < remaining) {
+        addPlate(plates, smallestAvailable);
+        remaining -= smallestAvailable.weightKg; // negativo = overshoot
+      }
+    }
+  }
+
   const achievedPerSide = weightPerSide - remaining;
   const achievedTotal = barWeightKg + 2 * achievedPerSide;
   const residualKg = achievedTotal - totalWeightKg;
   const status = Math.abs(residualKg) <= TOLERANCE ? "exact" : "approximate";
 
-  return { status, plates, achievedTotal, requestedTotal: totalWeightKg, barWeight: barWeightKg, residualKg };
+  return {
+    status,
+    plates,
+    achievedTotal,
+    requestedTotal: totalWeightKg,
+    barWeight: barWeightKg,
+    residualKg,
+  };
 }
 
-function error(barWeight: 15 | 20, requestedTotal: number, errorMessage: string): CalcResult {
+// Retorna a menor anilha (em kg) que ainda tem pares disponíveis.
+// O catálogo está ordenado do maior para o menor, então iteramos ao contrário.
+function findSmallestAvailable(
+  usedPairs: Map<string, number>
+): PlateDefinition | null {
+  for (let i = PLATE_CATALOG.length - 1; i >= 0; i--) {
+    const plate = PLATE_CATALOG[i];
+    const used = usedPairs.get(plate.id) ?? 0;
+    if (used < plate.pairs) return plate;
+  }
+  return null;
+}
+
+// Adiciona 1 unidade de uma anilha ao resultado, respeitando a ordenação.
+function addPlate(plates: PlateSlot[], plate: PlateDefinition): void {
+  const existing = plates.find((s) => s.plate.id === plate.id);
+  if (existing) {
+    existing.count += 1;
+    return;
+  }
+  // Inserir na posição correta (maior → menor)
+  const idx = plates.findIndex((s) => s.plate.weightKg < plate.weightKg);
+  if (idx === -1) plates.push({ plate, count: 1 });
+  else plates.splice(idx, 0, { plate, count: 1 });
+}
+
+function error(
+  barWeight: 15 | 20,
+  requestedTotal: number,
+  errorMessage: string
+): CalcResult {
   return {
     status: "error",
     plates: [],
