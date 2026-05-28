@@ -19,7 +19,7 @@ const CY       = VIEW_H / 2;
 const BAR_H    = 16;
 const COLLAR_H = BAR_H + 14;
 const COLLAR_W = 14;
-const SLEEVE   = 280;
+const SLEEVE   = 93;
 const CAP_W    = 10;
 const CAP_H    = BAR_H + 6;
 const GAP      = 3;
@@ -150,21 +150,6 @@ export default function BarbellDiagram({ plates, barWeight }: BarbellDiagramProp
           fill="url(#hb-collar)"
         />
 
-        {/* Empty bar hint */}
-        {expanded.length === 0 && (
-          <text
-            x={collarX + COLLAR_W + SLEEVE / 3}
-            y={CY}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fontSize={11}
-            fontFamily="var(--font-barlow-condensed), system-ui"
-            fill="#444"
-            letterSpacing="0.08em"
-          >
-            informe o peso para ver as anilhas
-          </text>
-        )}
       </svg>
     </div>
   );

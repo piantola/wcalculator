@@ -11,15 +11,8 @@ function fmt(n: number) {
   });
 }
 
-export default function ResidualBanner({
-  achievedTotal,
-  residualKg,
-}: ResidualBannerProps) {
+export default function ResidualBanner({ residualKg }: ResidualBannerProps) {
   const overshoot = residualKg > 0;
-  const achieved = achievedTotal.toLocaleString("pt-BR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 3,
-  });
 
   return (
     <div
@@ -31,19 +24,13 @@ export default function ResidualBanner({
         borderRadius: "6px",
         padding: "0.75rem 1rem",
         fontFamily: "var(--font-condensed)",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.2rem",
       }}
     >
-      <span style={{ fontSize: "1rem", fontWeight: 600, color: "#f0f0f0" }}>
-        Peso atingido: {achieved} kg
-      </span>
       <span
         style={{
           fontSize: "1rem",
           fontWeight: 700,
-          color: overshoot ? "#ff6b6b" : "#f0f0f0",
+          color: overshoot ? "#ff6b6b" : "#ecad0a",
         }}
       >
         {overshoot ? "Excedeu" : "Faltou"}: {fmt(residualKg)} kg
