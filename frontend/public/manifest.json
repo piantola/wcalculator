@@ -1,0 +1,24 @@
+{
+  "name": "Weight Plate Calculator",
+  "short_name": "wcalculator",
+  "description": "Calculadora de anilhas para barra",
+  "start_url": "/wcalculator/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#032147",
+  "theme_color": "#032147",
+  "icons": [
+    {
+      "src": "/wcalculator/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/wcalculator/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

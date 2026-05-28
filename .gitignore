@@ -1,0 +1,14 @@
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local
+*.tsbuildinfo
+.DS_Store
+frontend/public/sw.js
+frontend/public/workbox-*.js
+frontend/public/worker-*.js
+frontend/public/fallback-*.js
+frontend/public/swe-worker-*.js
+frontend/public/wcalculator/
+frontend/test-results/
+frontend/playwright-report/
