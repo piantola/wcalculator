@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { calcularDelta } from "@/lib/calcularDelta";
 import type { CalcResult, DeltaResult, PlateSlot } from "@/lib/types";
+import PlateList from "@/components/PlateList";
 
 interface DeltaSectionProps {
   current: CalcResult;
@@ -177,6 +178,18 @@ function DeltaResult({ result }: { result: DeltaResult }) {
           sign="+"
           signColor="#4caf7d"
         />
+      )}
+
+      {/* Config completa após as mudanças */}
+      {result.newPlates.length > 0 && (
+        <div
+          style={{
+            borderTop: "1px solid #1e3a5f",
+            paddingTop: "1rem",
+          }}
+        >
+          <PlateList plates={result.newPlates} />
+        </div>
       )}
     </div>
   );

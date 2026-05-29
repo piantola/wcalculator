@@ -31,6 +31,7 @@ export interface DeltaResult {
   status: CalcStatus;
   toAdd: PlateSlot[];
   toRemove: PlateSlot[];
+  newPlates: PlateSlot[];
   newAchievedTotal: number;
   requestedTotal: number;
   residualKg: number;

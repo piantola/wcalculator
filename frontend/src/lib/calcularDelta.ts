@@ -101,20 +101,18 @@ export function calcularDelta(current: CalcResult, newTotalKg: number): DeltaRes
 
   toAdd.sort((a, b) => b.plate.weightKg - a.plate.weightKg);
 
-  const deltaWeight = deltaPlates.reduce(
-    (s, slot) => s + slot.plate.weightKg * slot.count,
-    0
-  );
-  const newAchievedTotal = barWeight + 2 * (fixedWeightPerSide + deltaWeight);
-  const residualKg = newAchievedTotal - newTotalKg + deltaFinalRemaining * 2;
-  // residualKg mais preciso: usar o remaining final
-  const residualKgFinal = barWeight + 2 * (fixedWeightPerSide + (remainingNeeded - deltaFinalRemaining)) - newTotalKg;
+  const residualKgFinal =
+    barWeight + 2 * (fixedWeightPerSide + (remainingNeeded - deltaFinalRemaining)) - newTotalKg;
   const status = Math.abs(residualKgFinal) <= TOLERANCE ? "exact" : "approximate";
+
+  // Config completa nova = fixas travadas + resultado do delta greedy
+  const newPlates = mergePlates([...currentFixed.values(), ...deltaPlates]);
 
   return {
     status,
     toAdd,
     toRemove,
+    newPlates,
     newAchievedTotal: barWeight + 2 * (fixedWeightPerSide + (remainingNeeded - deltaFinalRemaining)),
     requestedTotal: newTotalKg,
     residualKg: residualKgFinal,
@@ -193,7 +191,19 @@ function buildFromPathA(
   const residualKg = newAchievedTotal - newTotalKg;
   const status = Math.abs(residualKg) <= TOLERANCE ? "exact" : "approximate";
 
-  return { status, toAdd, toRemove, newAchievedTotal, requestedTotal: newTotalKg, residualKg };
+  // newPlates é a config completa do caminho A (já ordenada pelo greedy)
+  return { status, toAdd, toRemove, newPlates, newAchievedTotal, requestedTotal: newTotalKg, residualKg };
+}
+
+// Mescla SlotArrays somando contagens por plate.id, ordenado por peso desc
+function mergePlates(slots: PlateSlot[]): PlateSlot[] {
+  const map = new Map<string, PlateSlot>();
+  for (const s of slots) {
+    const existing = map.get(s.plate.id);
+    if (existing) existing.count += s.count;
+    else map.set(s.plate.id, { plate: s.plate, count: s.count });
+  }
+  return [...map.values()].sort((a, b) => b.plate.weightKg - a.plate.weightKg);
 }
 
 // Insere anilha mantendo ordem decrescente de peso
@@ -210,6 +220,7 @@ function err(requestedTotal: number, errorMessage: string): DeltaResult {
     status: "error",
     toAdd: [],
     toRemove: [],
+    newPlates: [],
     newAchievedTotal: 0,
     requestedTotal,
     residualKg: 0,
