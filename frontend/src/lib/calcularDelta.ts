@@ -1,70 +1,81 @@
 import { PLATE_CATALOG } from "./plates";
-import type { CalcResult, DeltaResult, PlateDefinition, PlateSlot } from "./types";
+import type { DeltaResult, PlateDefinition, PlateSlot } from "./types";
 
 const TOLERANCE = 0.01;
 
-// Anilhas que nunca saem da barra uma vez colocadas
+// Fixas: nunca saem da barra uma vez colocadas
 const FIXED = new Set(["45lb", "35lb", "25lb", "15lb", "10lb", "10kg"]);
 
-export function calcularDelta(current: CalcResult, newTotalKg: number): DeltaResult {
+/**
+ * Calcula o delta entre a configuração atual da barra e um novo peso alvo.
+ *
+ * @param currentPlates  Anilhas atualmente na barra (configuração acumulada)
+ * @param barWeight      Peso da barra (15 ou 20 kg)
+ * @param prevAchieved   Peso total efetivamente atingido na carga anterior
+ * @param newTotalKg     Novo peso total desejado (deve ser > prevAchieved)
+ */
+export function calcularDelta(
+  currentPlates: PlateSlot[],
+  barWeight: 15 | 20,
+  prevAchieved: number,
+  newTotalKg: number
+): DeltaResult {
   if (!isFinite(newTotalKg) || newTotalKg <= 0) {
     return err(newTotalKg, "Peso inválido.");
   }
-  if (newTotalKg <= current.achievedTotal) {
+  if (newTotalKg <= prevAchieved) {
     const fmt = (n: number) =>
       n.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
     return err(
       newTotalKg,
-      `O novo peso deve ser maior que ${fmt(current.achievedTotal)} kg.`
+      `O novo peso deve ser maior que ${fmt(prevAchieved)} kg.`
     );
   }
 
-  const barWeight = current.barWeight as 15 | 20;
   const newWeightPerSide = (newTotalKg - barWeight) / 2;
 
-  // Separa anilhas fixas e removíveis da config atual
+  // Separa fixas e removíveis da config atual
   const currentFixed = new Map<string, PlateSlot>();
   const currentRemovable = new Map<string, PlateSlot>();
-  for (const slot of current.plates) {
+  for (const slot of currentPlates) {
     (FIXED.has(slot.plate.id) ? currentFixed : currentRemovable).set(
       slot.plate.id,
       slot
     );
   }
 
-  // — Caminho A: greedy completo para o novo peso (estoque cheio) —
+  // — Caminho A: greedy completo com estoque cheio —
   const fullCatalog = PLATE_CATALOG.map((p) => ({ plate: p, maxCount: p.pairs }));
   const { plates: pathAPlates, remaining: pathARemaining } = runGreedy(
     newWeightPerSide,
     fullCatalog
   );
-  const pathAFinalRemaining = applyOvershoot(pathAPlates, pathARemaining, fullCatalog);
+  const pathAFinal = applyOvershoot(pathAPlates, pathARemaining, fullCatalog);
 
-  // Verifica se todas as fixas da config atual estão presentes em quantidade ≥
+  // Verifica se todas as fixas atuais estão mantidas ou superadas no caminho A
   const pathAMap = new Map(pathAPlates.map((s) => [s.plate.id, s.count]));
-  const allFixedMaintained = [...currentFixed.values()].every(
+  const allFixed = [...currentFixed.values()].every(
     (s) => (pathAMap.get(s.plate.id) ?? 0) >= s.count
   );
 
-  if (allFixedMaintained) {
-    return buildFromPathA(
-      current,
+  if (allFixed) {
+    return buildPathA(
+      currentPlates,
       pathAPlates,
-      pathAFinalRemaining,
+      pathAFinal,
       newTotalKg,
       barWeight,
       newWeightPerSide
     );
   }
 
-  // — Caminho B: trava as fixas, libera removíveis, greedy no peso restante —
+  // — Caminho B: trava fixas, libera removíveis, greedy no peso restante —
   const fixedWeightPerSide = [...currentFixed.values()].reduce(
     (s, slot) => s + slot.plate.weightKg * slot.count,
     0
   );
   const remainingNeeded = newWeightPerSide - fixedWeightPerSide;
 
-  // Estoque modificado: fixas têm pares reduzidos; removíveis voltam ao estoque cheio
   const modCatalog = PLATE_CATALOG.map((p) => ({
     plate: p,
     maxCount: FIXED.has(p.id)
@@ -76,50 +87,70 @@ export function calcularDelta(current: CalcResult, newTotalKg: number): DeltaRes
     remainingNeeded,
     modCatalog
   );
-  const deltaFinalRemaining = applyOvershoot(deltaPlates, deltaRemaining, modCatalog);
+  const deltaFinal = applyOvershoot(deltaPlates, deltaRemaining, modCatalog);
 
-  // Calcula toAdd e toRemove como delta líquido em relação às removíveis atuais
+  // Delta líquido em relação às removíveis atuais
   const deltaMap = new Map(deltaPlates.map((s) => [s.plate.id, s.count]));
   const toAdd: PlateSlot[] = [];
   const toRemove: PlateSlot[] = [];
 
-  // Fixas adicionadas pelo greedy do delta (são sempre adições)
   for (const slot of deltaPlates) {
     if (FIXED.has(slot.plate.id)) toAdd.push(slot);
   }
-
-  // Removíveis: delta líquido entre nova alocação e atual
   for (const plate of PLATE_CATALOG) {
     if (FIXED.has(plate.id)) continue;
-    const currentCount = currentRemovable.get(plate.id)?.count ?? 0;
-    const newCount = deltaMap.get(plate.id) ?? 0;
-    if (newCount > currentCount)
-      toAdd.push({ plate, count: newCount - currentCount });
-    else if (currentCount > newCount)
-      toRemove.push({ plate, count: currentCount - newCount });
+    const cur = currentRemovable.get(plate.id)?.count ?? 0;
+    const nxt = deltaMap.get(plate.id) ?? 0;
+    if (nxt > cur) toAdd.push({ plate, count: nxt - cur });
+    else if (cur > nxt) toRemove.push({ plate, count: cur - nxt });
   }
 
   toAdd.sort((a, b) => b.plate.weightKg - a.plate.weightKg);
 
-  const residualKgFinal =
-    barWeight + 2 * (fixedWeightPerSide + (remainingNeeded - deltaFinalRemaining)) - newTotalKg;
-  const status = Math.abs(residualKgFinal) <= TOLERANCE ? "exact" : "approximate";
-
-  // Config completa nova = fixas travadas + resultado do delta greedy
+  const newAchievedTotal =
+    barWeight + 2 * (fixedWeightPerSide + (remainingNeeded - deltaFinal));
+  const residualKg = newAchievedTotal - newTotalKg;
+  const status = Math.abs(residualKg) <= TOLERANCE ? "exact" : "approximate";
   const newPlates = mergePlates([...currentFixed.values(), ...deltaPlates]);
 
-  return {
-    status,
-    toAdd,
-    toRemove,
-    newPlates,
-    newAchievedTotal: barWeight + 2 * (fixedWeightPerSide + (remainingNeeded - deltaFinalRemaining)),
-    requestedTotal: newTotalKg,
-    residualKg: residualKgFinal,
-  };
+  return { status, toAdd, toRemove, newPlates, newAchievedTotal, requestedTotal: newTotalKg, residualKg };
 }
 
-// — Greedy descrescente com estoque customizado —
+// ─── helpers internos ────────────────────────────────────────────────────────
+
+function buildPathA(
+  currentPlates: PlateSlot[],
+  newPlates: PlateSlot[],
+  finalRemaining: number,
+  newTotalKg: number,
+  barWeight: 15 | 20,
+  newWeightPerSide: number
+): DeltaResult {
+  const curMap = new Map(currentPlates.map((s) => [s.plate.id, s]));
+  const newMap = new Map(newPlates.map((s) => [s.plate.id, s]));
+  const toAdd: PlateSlot[] = [];
+  const toRemove: PlateSlot[] = [];
+
+  for (const [id, ns] of newMap) {
+    const diff = ns.count - (curMap.get(id)?.count ?? 0);
+    if (diff > 0) toAdd.push({ plate: ns.plate, count: diff });
+  }
+  for (const [id, cs] of curMap) {
+    if (!FIXED.has(id)) {
+      const diff = cs.count - (newMap.get(id)?.count ?? 0);
+      if (diff > 0) toRemove.push({ plate: cs.plate, count: diff });
+    }
+  }
+
+  toAdd.sort((a, b) => b.plate.weightKg - a.plate.weightKg);
+
+  const newAchievedTotal = barWeight + 2 * (newWeightPerSide - finalRemaining);
+  const residualKg = newAchievedTotal - newTotalKg;
+  const status = Math.abs(residualKg) <= TOLERANCE ? "exact" : "approximate";
+
+  return { status, toAdd, toRemove, newPlates, newAchievedTotal, requestedTotal: newTotalKg, residualKg };
+}
+
 function runGreedy(
   weightPerSide: number,
   catalog: ReadonlyArray<{ plate: PlateDefinition; maxCount: number }>
@@ -138,78 +169,40 @@ function runGreedy(
   return { plates, remaining };
 }
 
-// Tenta adicionar 1 anilha de menor peso disponível se overshoot < deficit
 function applyOvershoot(
   plates: PlateSlot[],
   remaining: number,
   catalog: ReadonlyArray<{ plate: PlateDefinition; maxCount: number }>
 ): number {
   if (remaining <= TOLERANCE) return remaining;
-  const usedMap = new Map(plates.map((s) => [s.plate.id, s.count]));
+  const used = new Map(plates.map((s) => [s.plate.id, s.count]));
   for (let i = catalog.length - 1; i >= 0; i--) {
     const { plate, maxCount } = catalog[i];
-    if ((usedMap.get(plate.id) ?? 0) < maxCount) {
+    if ((used.get(plate.id) ?? 0) < maxCount) {
       const overshoot = plate.weightKg - remaining;
       if (overshoot < remaining) {
         insertPlate(plates, plate);
         return remaining - plate.weightKg;
       }
-      break; // menor disponível não ajuda; maiores só pioram
+      break;
     }
   }
   return remaining;
 }
 
-function buildFromPathA(
-  current: CalcResult,
-  newPlates: PlateSlot[],
-  finalRemaining: number,
-  newTotalKg: number,
-  barWeight: 15 | 20,
-  newWeightPerSide: number
-): DeltaResult {
-  const currentMap = new Map(current.plates.map((s) => [s.plate.id, s]));
-  const newMap = new Map(newPlates.map((s) => [s.plate.id, s]));
-  const toAdd: PlateSlot[] = [];
-  const toRemove: PlateSlot[] = [];
-
-  for (const [id, newSlot] of newMap) {
-    const diff = newSlot.count - (currentMap.get(id)?.count ?? 0);
-    if (diff > 0) toAdd.push({ plate: newSlot.plate, count: diff });
-  }
-  for (const [id, curSlot] of currentMap) {
-    if (!FIXED.has(id)) {
-      const diff = curSlot.count - (newMap.get(id)?.count ?? 0);
-      if (diff > 0) toRemove.push({ plate: curSlot.plate, count: diff });
-    }
-  }
-
-  toAdd.sort((a, b) => b.plate.weightKg - a.plate.weightKg);
-
-  const achievedPerSide = newWeightPerSide - finalRemaining;
-  const newAchievedTotal = barWeight + 2 * achievedPerSide;
-  const residualKg = newAchievedTotal - newTotalKg;
-  const status = Math.abs(residualKg) <= TOLERANCE ? "exact" : "approximate";
-
-  // newPlates é a config completa do caminho A (já ordenada pelo greedy)
-  return { status, toAdd, toRemove, newPlates, newAchievedTotal, requestedTotal: newTotalKg, residualKg };
-}
-
-// Mescla SlotArrays somando contagens por plate.id, ordenado por peso desc
 function mergePlates(slots: PlateSlot[]): PlateSlot[] {
   const map = new Map<string, PlateSlot>();
   for (const s of slots) {
-    const existing = map.get(s.plate.id);
-    if (existing) existing.count += s.count;
+    const ex = map.get(s.plate.id);
+    if (ex) ex.count += s.count;
     else map.set(s.plate.id, { plate: s.plate, count: s.count });
   }
   return [...map.values()].sort((a, b) => b.plate.weightKg - a.plate.weightKg);
 }
 
-// Insere anilha mantendo ordem decrescente de peso
 function insertPlate(plates: PlateSlot[], plate: PlateDefinition): void {
-  const existing = plates.find((s) => s.plate.id === plate.id);
-  if (existing) { existing.count += 1; return; }
+  const ex = plates.find((s) => s.plate.id === plate.id);
+  if (ex) { ex.count += 1; return; }
   const idx = plates.findIndex((s) => s.plate.weightKg < plate.weightKg);
   if (idx === -1) plates.push({ plate, count: 1 });
   else plates.splice(idx, 0, { plate, count: 1 });

@@ -6,7 +6,7 @@ import type { CalcResult } from "@/lib/types";
 import BarSelector from "@/components/BarSelector";
 import WeightInput from "@/components/WeightInput";
 import ResultPanel from "@/components/ResultPanel";
-import DeltaSection from "@/components/DeltaSection";
+import CadeiaCargas from "@/components/CadeiaCargas";
 
 function parseWeight(raw: string): number {
   return parseFloat(raw.replace(",", ".").trim());
@@ -119,7 +119,7 @@ export default function Home() {
 
         {result && <ResultPanel result={result} />}
         {result && result.status !== "error" && (
-          <DeltaSection key={deltaKey} current={result} />
+          <CadeiaCargas key={deltaKey} firstResult={result} />
         )}
       </div>
     </main>
