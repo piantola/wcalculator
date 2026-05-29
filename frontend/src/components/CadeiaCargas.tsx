@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { calcularDelta } from "@/lib/calcularDelta";
+import { useStock, stockToPairs } from "@/lib/StockContext";
 import type { CalcResult, DeltaResult, PlateSlot } from "@/lib/types";
 import PlateList from "@/components/PlateList";
 
@@ -29,6 +30,9 @@ function fmtKg(n: number) {
 }
 
 export default function CadeiaCargas({ firstResult }: Props) {
+  const { stock } = useStock();
+  const stockPairs = stockToPairs(stock);
+
   const [slots, setSlots] = useState<Slot[]>([
     { inputValue: "", error: null, delta: null },
   ]);
@@ -52,7 +56,7 @@ export default function CadeiaCargas({ firstResult }: Props) {
       if (!isFinite(kg) || isNaN(kg)) {
         error = "Valor inválido.";
       } else {
-        const r = calcularDelta(base.plates, barWeight, base.achievedTotal, kg);
+        const r = calcularDelta(base.plates, barWeight, base.achievedTotal, kg, stockPairs);
         if (r.status === "error") error = r.errorMessage ?? "Erro.";
         else delta = r;
       }

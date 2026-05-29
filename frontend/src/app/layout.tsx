@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Barlow, Barlow_Condensed } from "next/font/google";
+import { StockProvider } from "@/lib/StockContext";
 import "./globals.css";
 
 const barlow = Barlow({
@@ -50,7 +51,9 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${barlow.variable} ${barlowCondensed.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <StockProvider>{children}</StockProvider>
+      </body>
     </html>
   );
 }

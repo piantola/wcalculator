@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { calcularAnilhas } from "@/lib/calcularAnilhas";
+import { useStock, stockToPairs } from "@/lib/StockContext";
 import type { CalcResult } from "@/lib/types";
 import BarSelector from "@/components/BarSelector";
 import WeightInput from "@/components/WeightInput";
@@ -13,35 +15,54 @@ function parseWeight(raw: string): number {
 }
 
 export default function Home() {
+  const { stock } = useStock();
+  const stockPairs = stockToPairs(stock);
+
   const [barWeight, setBarWeight] = useState<15 | 20>(20);
   const [inputValue, setInputValue] = useState("");
   const [result, setResult] = useState<CalcResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [chainKey, setChainKey] = useState(0);
+  const [stockBanner, setStockBanner] = useState(false);
 
-  const [deltaKey, setDeltaKey] = useState(0); // força remount ao limpar delta
+  // Detectar retorno da tela de estoque via flag de sessionStorage
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("stockEdited")) {
+        sessionStorage.removeItem("stockEdited");
+        setChainKey((k) => k + 1);
+        setStockBanner(true);
+        const t = setTimeout(() => setStockBanner(false), 4000);
+        return () => clearTimeout(t);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Recalcular quando o estoque muda (ex: enquanto na página principal)
+  const stockRef = useRef(stockPairs);
+  useEffect(() => {
+    if (JSON.stringify(stockRef.current) === JSON.stringify(stockPairs)) return;
+    stockRef.current = stockPairs;
+    if (inputValue.trim() !== "") {
+      const kg = parseWeight(inputValue);
+      if (isFinite(kg) && !isNaN(kg)) {
+        const r = calcularAnilhas(kg, barWeight, stockPairs);
+        if (r.status === "error") { setResult(null); setErrorMsg(r.errorMessage ?? "Erro."); }
+        else { setResult(r); setErrorMsg(null); }
+      }
+      setChainKey((k) => k + 1);
+    }
+  }, [stockPairs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleWeightChange(raw: string) {
     setInputValue(raw);
-    setDeltaKey((k) => k + 1); // limpa DeltaSection
-    if (raw.trim() === "") {
-      setResult(null);
-      setErrorMsg(null);
-      return;
-    }
+    setChainKey((k) => k + 1);
+    if (raw.trim() === "") { setResult(null); setErrorMsg(null); return; }
     const kg = parseWeight(raw);
-    if (!isFinite(kg) || isNaN(kg)) {
-      setResult(null);
-      setErrorMsg("Valor inválido.");
-      return;
-    }
-    const r = calcularAnilhas(kg, barWeight);
-    if (r.status === "error") {
-      setResult(null);
-      setErrorMsg(r.errorMessage ?? "Erro.");
-    } else {
-      setResult(r);
-      setErrorMsg(null);
-    }
+    if (!isFinite(kg) || isNaN(kg)) { setResult(null); setErrorMsg("Valor inválido."); return; }
+    const r = calcularAnilhas(kg, barWeight, stockPairs);
+    if (r.status === "error") { setResult(null); setErrorMsg(r.errorMessage ?? "Erro."); }
+    else { setResult(r); setErrorMsg(null); }
   }
 
   function handleBarChange(w: 15 | 20) {
@@ -49,14 +70,9 @@ export default function Home() {
     if (inputValue.trim() !== "") {
       const kg = parseWeight(inputValue);
       if (isFinite(kg) && !isNaN(kg)) {
-        const r = calcularAnilhas(kg, w);
-        if (r.status === "error") {
-          setResult(null);
-          setErrorMsg(r.errorMessage ?? "Erro.");
-        } else {
-          setResult(r);
-          setErrorMsg(null);
-        }
+        const r = calcularAnilhas(kg, w, stockPairs);
+        if (r.status === "error") { setResult(null); setErrorMsg(r.errorMessage ?? "Erro."); }
+        else { setResult(r); setErrorMsg(null); }
       }
     }
   }
@@ -82,7 +98,7 @@ export default function Home() {
           gap: "2rem",
         }}
       >
-        <header>
+        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h1
             style={{
               fontFamily: "var(--font-condensed)",
@@ -96,7 +112,32 @@ export default function Home() {
           >
             Calculadora de Anilhas
           </h1>
+          <Link
+            href="/estoque"
+            aria-label="Gerenciar estoque"
+            title="Estoque"
+            style={{ color: "#888888", textDecoration: "none", fontSize: "1.4rem", lineHeight: 1 }}
+          >
+            ⚙
+          </Link>
         </header>
+
+        {stockBanner && (
+          <div
+            role="status"
+            style={{
+              background: "rgba(32,157,215,0.1)",
+              border: "1px solid #209dd7",
+              borderRadius: "6px",
+              padding: "0.6rem 0.9rem",
+              fontFamily: "var(--font-condensed)",
+              fontSize: "0.9rem",
+              color: "#209dd7",
+            }}
+          >
+            Estoque atualizado — a cadeia de cargas foi reiniciada.
+          </div>
+        )}
 
         <BarSelector value={barWeight} onChange={handleBarChange} />
 
@@ -106,12 +147,7 @@ export default function Home() {
           <p
             role="alert"
             data-testid="error-message"
-            style={{
-              fontFamily: "var(--font-condensed)",
-              color: "#ff6b6b",
-              fontSize: "1rem",
-              margin: 0,
-            }}
+            style={{ fontFamily: "var(--font-condensed)", color: "#ff6b6b", fontSize: "1rem", margin: 0 }}
           >
             {errorMsg}
           </p>
@@ -119,7 +155,7 @@ export default function Home() {
 
         {result && <ResultPanel result={result} />}
         {result && result.status !== "error" && (
-          <CadeiaCargas key={deltaKey} firstResult={result} />
+          <CadeiaCargas key={chainKey} firstResult={result} />
         )}
       </div>
     </main>

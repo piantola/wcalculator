@@ -18,7 +18,8 @@ export function calcularDelta(
   currentPlates: PlateSlot[],
   barWeight: 15 | 20,
   prevAchieved: number,
-  newTotalKg: number
+  newTotalKg: number,
+  stockPairs?: Record<string, number>
 ): DeltaResult {
   if (!isFinite(newTotalKg) || newTotalKg <= 0) {
     return err(newTotalKg, "Peso inválido.");
@@ -45,7 +46,10 @@ export function calcularDelta(
   }
 
   // — Caminho A: greedy completo com estoque cheio —
-  const fullCatalog = PLATE_CATALOG.map((p) => ({ plate: p, maxCount: p.pairs }));
+  const fullCatalog = PLATE_CATALOG.map((p) => ({
+    plate: p,
+    maxCount: stockPairs?.[p.id] ?? p.pairs,
+  }));
   const { plates: pathAPlates, remaining: pathARemaining } = runGreedy(
     newWeightPerSide,
     fullCatalog
@@ -79,8 +83,8 @@ export function calcularDelta(
   const modCatalog = PLATE_CATALOG.map((p) => ({
     plate: p,
     maxCount: FIXED.has(p.id)
-      ? p.pairs - (currentFixed.get(p.id)?.count ?? 0)
-      : p.pairs,
+      ? (stockPairs?.[p.id] ?? p.pairs) - (currentFixed.get(p.id)?.count ?? 0)
+      : (stockPairs?.[p.id] ?? p.pairs),
   }));
 
   const { plates: deltaPlates, remaining: deltaRemaining } = runGreedy(
