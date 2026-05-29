@@ -26,3 +26,13 @@ export interface CalcResult {
   residualKg: number;
   errorMessage?: string;
 }
+
+export interface DeltaResult {
+  status: CalcStatus;
+  toAdd: PlateSlot[];
+  toRemove: PlateSlot[];
+  newAchievedTotal: number;
+  requestedTotal: number;
+  residualKg: number;
+  errorMessage?: string;
+}

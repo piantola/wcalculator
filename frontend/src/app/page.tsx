@@ -6,6 +6,7 @@ import type { CalcResult } from "@/lib/types";
 import BarSelector from "@/components/BarSelector";
 import WeightInput from "@/components/WeightInput";
 import ResultPanel from "@/components/ResultPanel";
+import DeltaSection from "@/components/DeltaSection";
 
 function parseWeight(raw: string): number {
   return parseFloat(raw.replace(",", ".").trim());
@@ -17,8 +18,11 @@ export default function Home() {
   const [result, setResult] = useState<CalcResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [deltaKey, setDeltaKey] = useState(0); // força remount ao limpar delta
+
   function handleWeightChange(raw: string) {
     setInputValue(raw);
+    setDeltaKey((k) => k + 1); // limpa DeltaSection
     if (raw.trim() === "") {
       setResult(null);
       setErrorMsg(null);
@@ -114,6 +118,9 @@ export default function Home() {
         )}
 
         {result && <ResultPanel result={result} />}
+        {result && result.status !== "error" && (
+          <DeltaSection key={deltaKey} current={result} />
+        )}
       </div>
     </main>
   );
